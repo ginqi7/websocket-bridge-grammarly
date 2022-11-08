@@ -148,24 +148,36 @@ async def getAnalyzeInfo(point):
         if point > info["begin"] and point < info["end"]:
             html = extractHtml(info)
             await runAndLog('(websocket-bridge-grammarly-render "{html}")'.format(html=html))
+            print(4)
             break
+        
 
+def getValueByKey(json, key):
+    return json[key].replace('"', "'") if key in json else ""
 
 # extract html from websocket json.
 def extractHtml(json):
-    title = json["point"].replace('"', "'")
-    transforms = json["transforms"]
-    details = json["details"].replace('"', "'")
-    explanation = json["explanation"].replace('"', "'")
-    examples = json["examples"].replace('"', "'")
+    title = getValueByKey(json, "point")
+    print(1)
+    transforms = json["transforms"] if "transforms" in json else []
+    print(3)
+    details = getValueByKey(json, "details")
+    print(4)
+    explanation = getValueByKey(json, "explanation")
+    print(5)
+    examples = getValueByKey(json, "examples")
+    print(6)
     transformHtml = ""
+    print(7)
     for transform in transforms:
+        print(8)
         transform = re.sub(
             r"<span class='gr_grammar_del'>(.*?)<\/span>",
             r"<del>\1</del> -> ",
             transform.replace('"', "'")
         )
         transformHtml += "<p>{transform}</p>".format(transform=transform)
+        print(3)
         
     html = """<h1>{title}</h1>
 <h2>transforms</h2>
@@ -182,6 +194,7 @@ def extractHtml(json):
         explanation=explanation,
         examples=examples,
     )
+    print(4)
     return html
 
 # type message in Grammarly Demo to analyze it.
