@@ -27,16 +27,25 @@
 (require 'websocket-bridge)
 
 (defgroup websocket-bridge-grammarly()
-  "check grammar in buffers by grammarly."
+  "Check grammar in buffers by grammarly."
   :group 'applications)
 
 (defvar websocket-bridge-grammarly-py-path
   (concat
    (file-name-directory load-file-name)
-   "websocket-bridge-grammarly.py"))
+   "websocket_bridge_grammarly.py"))
 
-(defcustom websocket-bridge-grammarly-need-login t
-  "If t, login grammarly using chrome cookie
+(defun random-color ()
+  "Generate a random color."
+  (let* ((colors (ns-list-colors))
+         (random-num (random (length colors))))
+    (nth random-num colors)))
+
+(defvar websocket-bridge-grammarly-faces (make-hash-table :test 'equal))
+
+
+(defcustom websocket-bridge-grammarly-need-login nil
+  "If t, login grammarly using chrome cookie.
 If nil, don't login."
   :group 'websocket-bridge-grammarly
   :type 'boolean)
@@ -56,29 +65,35 @@ If nil, don't login."
   (websocket-bridge-app-open-buffer "grammarly"))
 
 (defun websocket-bridge-grammarly-analyze-current-line()
+  "Grammarly analyze current line."
   (interactive)
   (websocket-bridge-call-grammarly-on-current-line "analyze"))
 
 
 (defun websocket-bridge-grammarly-analyze-buffer()
+  "Analyze current buffer by Grammarly."
   (interactive)
+  (remove-overlays)
   (websocket-bridge-call-grammarly-on-buffer "analyze"))
 
-(defun websocket-bridge-grammarly-get-analyze-info()
+(defun websocket-bridge-grammarly-get-details()
+  "Get Grammarly analyzed details."
   (interactive)
-  (websocket-bridge-call-grammarly-on-buffer "getInfo"))
+  (websocket-bridge-call-grammarly-on-buffer "get_details"))
 
-
-(defun websocket-bridge-grammarly-get-list-infos()
+(defun websocket-bridge-grammarly-list-all()
+  "List all Grammarly resutl."
   (interactive)
-  (websocket-bridge-call-grammarly-on-buffer "listInfos"))
+  (websocket-bridge-call-grammarly-on-buffer "list_all"))
 
 (defun websocket-bridge-grammarly-analyze-current-line()
+  "Grammarly analyze current line."
   (interactive)
   (websocket-bridge-call-grammarly-on-current-line "analyze"))
 
 (defun websocket-bridge-grammarly-overlay-from(category begin end)
-  (websocket-bridge-grammarly-from begin end))
+  "Add overlay from BEGIN to END, different CATEGORY diferent face."
+  (websocket-bridge-grammarly-from category begin end))
 
 (defun websocket-bridge-call-grammarly-on-current-line(func-name)
   "Call grammarly function on current line by FUNC-NAME."
@@ -93,14 +108,17 @@ If nil, don't login."
                          (point)))
 
 
-(defun websocket-bridge-grammarly-from (begin end)
+(defun websocket-bridge-grammarly-from (category begin end)
+  "Add overlay from BEGIN to END, different CATEGORY diferent face."
+  (when (not (gethash category websocket-bridge-grammarly-faces))
+    (puthash category (list :underline (list :color (random-color) :style 'wave)) websocket-bridge-grammarly-faces)
+    )
   (let ((ov (make-overlay begin end)))
-    (overlay-put ov 'face 'bold)))
-
-(defun websocket-bridge-grammarly-line-from (begin end)
-  (put-text-property begin end 'font-lock-face '(:foreground "red")))
+    (overlay-put ov 'face (gethash category websocket-bridge-grammarly-faces))))
 
 (defun websocket-bridge-grammarly-render (html)
+  "Called by python, to render HTML.
+HTML is the Grammarly resutl."
   (with-temp-buffer
     (insert html)
     (shr-render-buffer (current-buffer))))
