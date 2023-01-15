@@ -7,6 +7,7 @@ import re
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from bs4 import BeautifulSoup
 
 import websocket_bridge_python
 from playwright.async_api import async_playwright
@@ -71,15 +72,29 @@ async def handle_ws_msg(msg:str):
         return
     obj = json.loads(msg)
     if "point" not in obj:
-        return
-    else:
         print(obj)
+        return
     category = obj["category"]
     begin = obj["begin"] + 1
     end = obj["end"] + 1
     grammarly_response["infos"].append(obj)
-    cmd = f'(websocket-bridge-grammarly-overlay-from "{category}" {begin} {end})'
+    transform_values = extract_transform_values(obj)
+    if len(transform_values) > 0:
+        value = transform_values[0]
+        cmd = f'(websocket-bridge-grammarly-overlay-from "{category}" {begin} {end} "{value}")'
+    else:
+        cmd = f'(websocket-bridge-grammarly-overlay-from "{category}" {begin} {end})'
     await run_and_log(cmd)
+
+def extract_transform_values(json_obj:dict):
+    "Extract first transform message in Grammarly result."
+    transform_values = []
+    transforms = json_obj["transforms"] if "transforms" in json_obj else []
+    for trans in transforms:
+        html_item = BeautifulSoup(trans, 'html.parser').select_one('.gr_grammar_ins')
+        if html_item and html_item.text:
+            transform_values.append(html_item.text)
+    return transform_values
 
 async def login_grammarly():
     """Login grammarly with cookie"""
@@ -95,10 +110,6 @@ async def login_grammarly():
     connect_page = CONTEXT.pages[1]
     connect_button = await connect_page.wait_for_selector('text="Connect"')
     await connect_button.click()
-    f12 = await PAGE.context.new_cdp_session(PAGE)
-    await f12.send("Network.enable")
-    await f12.send("Page.enable")
-    f12.on("Network.webSocketFrameReceived", handle_websocket_frame_received)
 
 async def connect_grammarly(playwright):
     """using playwright to connect Grammarly demo and login with account."""
@@ -107,6 +118,7 @@ async def connect_grammarly(playwright):
     browser = await browser_type.launch(headless=False)
     CONTEXT = await browser.new_context()
     need_login = await BRIDGE.get_emacs_var("websocket-bridge-grammarly-need-login")
+    need_login = bool(need_login == "true")
     cookie_array = []
     if need_login:
         from pycookiecheat import chrome_cookies
@@ -121,6 +133,10 @@ async def connect_grammarly(playwright):
     await PAGE.goto("http://127.0.0.1:" + str(grammarly_demo_port))
     if need_login:
         await login_grammarly()
+    f12 = await PAGE.context.new_cdp_session(PAGE)
+    await f12.send("Network.enable")
+    await f12.send("Page.enable")
+    f12.on("Network.webSocketFrameReceived", handle_websocket_frame_received)
 
 async def on_message(message):
     """dispatch message recived from Emacs."""
@@ -129,14 +145,23 @@ async def on_message(message):
     sentence_str = info[1][1]
     point = info[1][2]
     if cmd == "analyze":
-        await remove_overlays()
         await analyze_sentence(sentence_str)
     elif cmd == "get_details":
         await get_details(point)
     elif cmd == "list_all":
         await list_all()
+    elif cmd == "refine":
+        await refine(point)
     else:
         print("not fount dispatcher", flush=True)
+
+async def refine(point):
+    """refine current piont."""
+    for info in grammarly_response["infos"]:
+        if info["end"] > point > info["begin"]:
+            html = extract_transform_values(info)
+            await run_and_log(f'(websocket-bridge-grammarly-render "{html}")')
+            break
 
 async def list_all():
     """list all analyze informations."""
@@ -171,7 +196,6 @@ async def get_details(point):
         if info["end"] > point > info["begin"]:
             html = extract_html(info)
             await run_and_log(f'(websocket-bridge-grammarly-render "{html}")')
-            print(4)
             break
 
 def get_value_by_key(json_obj, key):
